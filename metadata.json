@@ -1,0 +1,6 @@
+{
+  "name": "DayForge — Personal Productivity PWA",
+  "description": "A local-first personal productivity PWA for task planning, markdown knowledge notes, developer toolbox, income tracking, and AI copilot.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
