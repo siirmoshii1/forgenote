@@ -13,6 +13,8 @@ import {
   PenTool,
   Lightbulb,
   WifiOff,
+  Settings,
+  Server,
 } from 'lucide-react';
 import { Task } from '../../types.ts';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus.ts';
@@ -43,6 +45,15 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [imported, setImported] = useState(false);
 
+  // Optional backend server URL for users hosting the static PWA on GitHub Pages
+  const [backendUrl, setBackendUrl] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('dayforge_backend_url') || '';
+    }
+    return '';
+  });
+  const [showSettings, setShowSettings] = useState(false);
+
   React.useEffect(() => {
     if (initialPrompt) {
       setPrompt(initialPrompt);
@@ -50,6 +61,13 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
   }, [initialPrompt]);
 
   if (!isOpen) return null;
+
+  const handleSaveBackendUrl = (url: string) => {
+    setBackendUrl(url);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dayforge_backend_url', url.trim());
+    }
+  };
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -78,11 +96,35 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
     }
 
     try {
-      const res = await fetch('/api/gemini/generate', {
+      const cleanBase = backendUrl.trim().replace(/\/+$/, '');
+      const endpoint = cleanBase ? `${cleanBase}/api/gemini/generate` : '/api/gemini/generate';
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, systemInstruction }),
       });
+
+      // Validate that response is JSON rather than an HTML 404 page from static hosts
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const isGitHubPages =
+          typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
+
+        if (res.status === 404 || contentType.includes('text/html')) {
+          if (isGitHubPages) {
+            throw new Error(
+              'GitHub Pages only hosts static files and does not execute backend Node.js code (/api/*). To use Gemini AI, deploy server.ts to a backend provider (Cloud Run, Render, Railway, VPS) with your GEMINI_API_KEY and configure its URL in Copilot Settings (⚙️ above), or run DayForge locally via "npm run dev". All other DayForge tools continue functioning 100% offline.'
+            );
+          } else {
+            throw new Error(
+              'The backend proxy (/api/gemini/generate) returned HTML instead of JSON. Ensure your server.ts is running with GEMINI_API_KEY.'
+            );
+          }
+        }
+        const rawText = await res.text();
+        throw new Error(rawText || `Server returned HTTP ${res.status}`);
+      }
 
       const data = await res.json();
 
@@ -113,7 +155,6 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
 
     const extractedTasks: Task[] = [];
     lines.forEach((line) => {
-      // Check for bullet or numbering
       const clean = line.replace(/^[-*•\d.]+\s*/, '').trim();
       if (!clean) return;
 
@@ -160,21 +201,65 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
                 Gemini Productivity Copilot
               </h3>
               <span className="text-[11px] text-zinc-500 font-mono">
-                Powered by gemini-3.8-flash via server proxy
+                {backendUrl ? 'Connected to custom backend' : 'Server proxy (/api/gemini/generate)'}
               </span>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close copilot"
-            className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              aria-label="Copilot backend settings"
+              className={`p-1.5 rounded-md transition ${
+                showSettings
+                  ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                  : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+              title="Configure Backend Server Endpoint"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Close copilot"
+              className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Content */}
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Settings Drawer (for configuring custom backend URL when hosted on GitHub Pages) */}
+          {showSettings && (
+            <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 space-y-2.5 animate-in slide-in-from-top-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+                <Server className="w-4 h-4 text-blue-500" />
+                <span>Backend Server Endpoint (For Static Hosting / GitHub Pages)</span>
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                GitHub Pages hosts static files and cannot execute server-side Node.js code. If you deployed your backend (`server.ts`) to Google Cloud Run, Render, or Railway, enter your service URL below. Leave blank to use the default relative server.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="url"
+                  value={backendUrl}
+                  onChange={(e) => handleSaveBackendUrl(e.target.value)}
+                  placeholder="https://my-dayforge-backend.run.app"
+                  className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none font-mono"
+                />
+                {backendUrl && (
+                  <button
+                    onClick={() => handleSaveBackendUrl('')}
+                    className="px-2.5 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Mode Selector Tabs */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
@@ -216,7 +301,7 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <span className="font-semibold block">Copilot Request Failed</span>
-                <span className="block">{error}</span>
+                <span className="block leading-relaxed">{error}</span>
               </div>
             </div>
           )}
