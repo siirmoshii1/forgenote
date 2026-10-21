@@ -5,8 +5,16 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
+  // Support GitHub Pages repository path (e.g. "/forgenote/")
+  // Automatically detects GITHUB_REPOSITORY from GitHub Actions or BASE_PATH
+  const repoName = process.env.GITHUB_REPOSITORY
+    ? process.env.GITHUB_REPOSITORY.split('/')[1]
+    : '';
+  const rawBase = process.env.BASE_PATH || (repoName ? `/${repoName}/` : '/');
+  const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+
   return {
-    base: './',
+    base,
     plugins: [
       react(),
       tailwindcss(),
@@ -14,30 +22,30 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
-          id: './',
+          id: base,
           name: 'DayForge — Personal Productivity PWA',
           short_name: 'DayForge',
           description: 'A local-first personal productivity PWA for task planning, markdown knowledge notes, developer toolbox, income tracking, and AI copilot.',
           theme_color: '#09090b',
           background_color: '#09090b',
           display: 'standalone',
-          start_url: './',
-          scope: './',
+          start_url: base,
+          scope: base,
           icons: [
             {
-              src: 'pwa-192x192.png',
+              src: `${base}pwa-192x192.png`.replace(/\/\//g, '/'),
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: 'pwa-512x512.png',
+              src: `${base}pwa-512x512.png`.replace(/\/\//g, '/'),
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: 'pwa-maskable-512x512.png',
+              src: `${base}pwa-maskable-512x512.png`.replace(/\/\//g, '/'),
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
@@ -46,6 +54,10 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
+          navigateFallback: `${base}index.html`.replace(/\/\//g, '/'),
           navigateFallbackDenylist: [/^\/api/],
         },
         devOptions: {
